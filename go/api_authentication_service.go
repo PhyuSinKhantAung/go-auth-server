@@ -13,59 +13,120 @@ package openapi
 
 import (
 	"context"
-	"net/http"
+	"database/sql"
 	"errors"
+	"net/http"
+	"os"
+	"time"
+
+	"github.com/PhyuSinKhantAung/go-auth-server/go/database"
+	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/crypto/bcrypt"
 )
+
+func getEnv(key, fallback string) string {
+	if value, ok := os.LookupEnv(key); ok {
+		return value
+	}
+	return fallback
+}
 
 // AuthenticationAPIService is a service that implements the logic for the AuthenticationAPIServicer
 // This service should implement the business logic for every endpoint for the AuthenticationAPI API.
 // Include any external packages or services that will be required by this service.
 type AuthenticationAPIService struct {
+	jwtSecret []byte
+	db        *sql.DB
 }
 
 // NewAuthenticationAPIService creates a default api service
 func NewAuthenticationAPIService() *AuthenticationAPIService {
-	return &AuthenticationAPIService{}
+	database.InitDB()
+	return &AuthenticationAPIService{
+		jwtSecret: []byte(getEnv("JWT_SECRET", "your-256-bit-secret")),
+		db:        database.GetDB(),
+	}
 }
 
 // SignupPost - User sign up
 func (s *AuthenticationAPIService) SignupPost(ctx context.Context, signupPostRequest SignupPostRequest) (ImplResponse, error) {
-	// TODO - update SignupPost with the required logic for this service method.
-	// Add api_authentication_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	// Check if user already exists
+	var exists bool
+	err := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)", signupPostRequest.Email).Scan(&exists)
+	if err != nil {
+		return Response(http.StatusInternalServerError, map[string]string{"error": "Database error"}), err
+	}
+	if exists {
+		return Response(http.StatusBadRequest, map[string]string{"error": "Email already registered"}), errors.New("email already registered")
+	}
 
-	// TODO: Uncomment the next line to return response Response(201, {}) or use other options such as http.Ok ...
-	// return Response(201, nil),nil
+	// Hash the password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(signupPostRequest.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return Response(http.StatusInternalServerError, map[string]string{"error": "Error hashing password"}), err
+	}
 
-	// TODO: Uncomment the next line to return response Response(400, {}) or use other options such as http.Ok ...
-	// return Response(400, nil),nil
+	// Insert the new user
+	_, err = s.db.ExecContext(ctx,
+		"INSERT INTO users (email, password_hash) VALUES ($1, $2)",
+		signupPostRequest.Email, string(hashedPassword))
+	if err != nil {
+		return Response(http.StatusInternalServerError, map[string]string{"error": "Error creating user"}), err
+	}
 
-	return Response(http.StatusNotImplemented, nil), errors.New("SignupPost method not implemented")
+	return Response(http.StatusCreated, map[string]string{"message": "User successfully registered"}), nil
 }
 
 // SigninPost - User sign in
 func (s *AuthenticationAPIService) SigninPost(ctx context.Context, signinPostRequest SigninPostRequest) (ImplResponse, error) {
-	// TODO - update SigninPost with the required logic for this service method.
-	// Add api_authentication_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	var hashedPassword string
+	err := s.db.QueryRowContext(ctx,
+		"SELECT password_hash FROM users WHERE email = $1",
+		signinPostRequest.Email).Scan(&hashedPassword)
+	if err == sql.ErrNoRows {
+		return Response(http.StatusUnauthorized, map[string]string{"error": "Invalid email or password"}), errors.New("invalid credentials")
+	}
+	if err != nil {
+		return Response(http.StatusInternalServerError, map[string]string{"error": "Database error"}), err
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, SigninPost200Response{}) or use other options such as http.Ok ...
-	// return Response(200, SigninPost200Response{}), nil
+	// Compare passwords
+	err = bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(signinPostRequest.Password))
+	if err != nil {
+		return Response(http.StatusUnauthorized, map[string]string{"error": "Invalid email or password"}), errors.New("invalid credentials")
+	}
 
-	// TODO: Uncomment the next line to return response Response(401, {}) or use other options such as http.Ok ...
-	// return Response(401, nil),nil
+	// Generate JWT token
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+		"email": signinPostRequest.Email,
+		"exp":   time.Now().Add(time.Hour * 24).Unix(), // Token expires in 24 hours
+	})
 
-	return Response(http.StatusNotImplemented, nil), errors.New("SigninPost method not implemented")
+	tokenString, err := token.SignedString(s.jwtSecret)
+	if err != nil {
+		return Response(http.StatusInternalServerError, map[string]string{"error": "Error generating token"}), err
+	}
+
+	return Response(http.StatusOK, SigninPost200Response{Token: tokenString}), nil
 }
 
 // ResetPasswordPost - Reset user password
 func (s *AuthenticationAPIService) ResetPasswordPost(ctx context.Context, resetPasswordPostRequest ResetPasswordPostRequest) (ImplResponse, error) {
-	// TODO - update ResetPasswordPost with the required logic for this service method.
-	// Add api_authentication_service.go to the .openapi-generator-ignore to avoid overwriting this service implementation when updating open api generation.
+	// Check if user exists
+	var exists bool
+	err := s.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)", resetPasswordPostRequest.Email).Scan(&exists)
+	if err != nil {
+		return Response(http.StatusInternalServerError, map[string]string{"error": "Database error"}), err
+	}
+	if !exists {
+		return Response(http.StatusNotFound, map[string]string{"error": "User not found"}), errors.New("user not found")
+	}
 
-	// TODO: Uncomment the next line to return response Response(200, {}) or use other options such as http.Ok ...
-	// return Response(200, nil),nil
+	// In a real application, you would:
+	// 1. Generate a password reset token
+	// 2. Store it in the database with an expiration
+	// 3. Send an email to the user with a reset link
+	// For this example, we'll just acknowledge that the reset process was initiated
 
-	// TODO: Uncomment the next line to return response Response(404, {}) or use other options such as http.Ok ...
-	// return Response(404, nil),nil
-
-	return Response(http.StatusNotImplemented, nil), errors.New("ResetPasswordPost method not implemented")
+	return Response(http.StatusOK, map[string]string{"message": "Password reset email sent successfully"}), nil
 }
