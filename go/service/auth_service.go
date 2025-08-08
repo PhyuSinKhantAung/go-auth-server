@@ -7,8 +7,8 @@ import (
 	"log"
 	"time"
 
-	openapi "github.com/GIT_USER_ID/GIT_REPO_ID/go"
-	"github.com/GIT_USER_ID/GIT_REPO_ID/go/database"
+	openapi "github.com/PhyuSinKhantAung/go-auth-server/go"
+	"github.com/PhyuSinKhantAung/go-auth-server/go/database"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
