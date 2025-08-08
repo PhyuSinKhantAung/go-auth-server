@@ -1,0 +1,159 @@
+openapi: 3.0.0
+info:
+  contact:
+    email: support@example.com
+    name: API Support
+  description:
+    "A RESTful API service that handles user authentication including signup,\
+    \ signin, and password reset functionality."
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: Simple Auth API
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+paths:
+  /signup:
+    post:
+      description: Register a new user account with email and password
+      requestBody:
+        content:
+          application/json:
+            example:
+              email: user@example.com
+              password: secretpassword123
+            schema:
+              $ref: "#/components/schemas/_signup_post_request"
+        required: true
+      responses:
+        "201":
+          content:
+            application/json:
+              example:
+                message: User successfully registered
+          description: User created successfully
+        "400":
+          content:
+            application/json:
+              example:
+                error: Invalid email format or password too short
+          description: Bad request
+      summary: User sign up
+      tags:
+        - Authentication
+  /signin:
+    post:
+      description:
+        Authenticate a user and receive a JWT token for subsequent API
+        calls
+      requestBody:
+        content:
+          application/json:
+            example:
+              email: user@example.com
+              password: secretpassword123
+            schema:
+              $ref: "#/components/schemas/_signin_post_request"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+              schema:
+                $ref: "#/components/schemas/_signin_post_200_response"
+          description: "Successful login, returns token"
+        "401":
+          content:
+            application/json:
+              example:
+                error: Invalid email or password
+          description: Unauthorized
+      summary: User sign in
+      tags:
+        - Authentication
+  /reset-password:
+    post:
+      description: Initiate a password reset process for a registered user
+      requestBody:
+        content:
+          application/json:
+            example:
+              email: user@example.com
+            schema:
+              $ref: "#/components/schemas/_reset_password_post_request"
+        required: true
+      responses:
+        "200":
+          content:
+            application/json:
+              example:
+                message: Password reset email sent successfully
+          description: Password reset initiated
+        "404":
+          content:
+            application/json:
+              example:
+                error: User with this email address not found
+          description: User not found
+      summary: Reset user password
+      tags:
+        - Authentication
+components:
+  schemas:
+    _signin_post_request:
+      description: Request payload for user sign in
+      properties:
+        email:
+          description: User's email address
+          example: user@example.com
+          format: email
+          type: string
+        password:
+          description: User's password
+          example: secretpassword123
+          type: string
+      required:
+        - email
+        - password
+      type: object
+    _signin_post_200_response:
+      description: Successful sign in response containing JWT token
+      example:
+        token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+      properties:
+        token:
+          description: JWT token for API authentication
+          example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+          type: string
+      type: object
+    _reset_password_post_request:
+      description: Request payload for password reset
+      properties:
+        email:
+          description: Email address of the user requesting password reset
+          example: user@example.com
+          format: email
+          type: string
+      required:
+        - email
+      type: object
+    _signup_post_request:
+      description: Request payload for user registration
+      properties:
+        email:
+          description: Email address for the new user account
+          example: user@example.com
+          format: email
+          type: string
+        password:
+          description: Password for the new user account (minimum 6 characters)
+          example: secretpassword123
+          minLength: 6
+          type: string
+      required:
+        - email
+        - password
+      type: object
